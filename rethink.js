@@ -43,6 +43,7 @@ rMethods.forEach(function (method) {
   rdbvalProto[method] = function () {
     var ret = original.apply(this, arguments);
     ret._connection = this._connection;
+    ret._table = this._table;
     return ret;
   };
 
@@ -52,10 +53,14 @@ rMethods.forEach(function (method) {
     var o = r.table(this.name);
     var ret = o[method].apply(o, arguments);
     ret._connection = this._connection;
+    ret._table = this;
     return ret;
   };
 });
 
+///////////////////////////////////////////////////////////////////////////////
+// Monkey-patching section
+///////////////////////////////////////////////////////////////////////////////
 var rtermbaseProto = rdbvalProto.constructor.__super__;
 // monkey patch `run()`
 var originalRun = rtermbaseProto.run;
@@ -64,6 +69,105 @@ rtermbaseProto.run = function () {
   args.unshift(this._connection);
   return wait(originalRun.apply(this, args));
 };
+
+///////////////////////////////////////////////////////////////////////////////
+// Extra cursor methods as syntactic sugar
+///////////////////////////////////////////////////////////////////////////////
+rtermbaseProto.fetch = function () {
+  var self = this;
+  return wait(self.run().toArray());
+};
+
+rtermbaseProto.observe = function (callbacks) {
+  var cbs = {
+    added: callbacks.added || function () {},
+    changed: callbacks.changed || function () {},
+    removed: callbacks.removed || function () {},
+    error: callbacks.error || function (err) { throw err; }
+  };
+
+  var self = this;
+
+
+  // XXX With RethinkDB 2.1 we should be able to pass the include_initial_vals
+  // option and kill the hack of fetching the initial values.
+  var initValues = self.fetch();
+  initValues.forEach(function (val) {
+    cbs.added(val);
+  });
+
+  var stream = self.changes().run();
+  stream.each(function (err, notif) {
+    if (err) cbs.error(err);
+    if (! notif.old_val) {
+      cbs.added(notif.new_val);
+      return;
+    }
+    if (! notif.new_val) {
+      cbs.removed(notif.old_val);
+      return;
+    }
+    cbs.changed(notif.new_val, notif.old_val);
+  });
+
+  return {
+    stop: function () {
+      stream.close();
+    }
+  };
+};
+
+Rethink.Table.prototype._publishCursor = function (sub) {
+  var self = this;
+  return self.filter({})._publishCursor(sub);
+};
+
+rtermbaseProto._publishCursor = function (sub) {
+  var self = this;
+
+  try {
+    Rethink.Table._publishCursor(self, sub, self._table.name);
+  } catch (err) {
+    self.error(err);
+  }
+};
+
+Rethink.Table._publishCursor = function (cursor, sub, tableName) {
+  var observeHandle = cursor.observe({
+    added: function (doc) {
+      sub.added(tableName, doc.id, doc);
+    },
+    changed: function (newDoc, oldDoc) {
+      var fields = diffObject(oldDoc, newDoc);
+      sub.changed(tableName, newDoc.id, fields);
+    },
+    removed: function (doc) {
+      sub.removed(tableName, doc.id);
+    }
+  });
+
+  // We don't call sub.ready() here: it gets called in livedata_server, after
+  // possibly calling _publishCursor on multiple returned cursors.
+
+  // register stop callback (expects lambda w/ no args).
+  sub.onStop(function () {
+    observeHandle.stop();
+  });
+};
+
+function diffObject (oldDoc, newDoc) {
+  var diff = {};
+  Object.keys(newDoc).forEach(function (property) {
+    if (! EJSON.equals(oldDoc[property], newDoc[property]))
+      diff[property] = newDoc[property];
+  });
+  Object.keys(oldDoc).forEach(function (property) {
+    if (! newDoc.hasOwnProperty(property))
+      diff[property] = undefined;
+  });
+
+  return diff;
+}
 
 function wait (promise) {
   var f = new Future;

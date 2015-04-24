@@ -88,17 +88,42 @@ rtermbaseProto.observe = function (callbacks) {
 
   var self = this;
 
+  var initValuesFuture = new Future;
+  var initializing = false;
 
-  // XXX With RethinkDB 2.1 we should be able to pass the include_initial_vals
-  // option and kill the hack of fetching the initial values.
-  var initValues = self.fetch();
-  initValues.forEach(function (val) {
-    cbs.added(val);
-  });
-
-  var stream = self.changes().run();
+  var stream = self.changes({ includeStates: true }).run();
   stream.each(function (err, notif) {
-    if (err) cbs.error(err);
+    if (err) {
+      if (initValueFuture.isResolved())
+        cbs.error(err);
+      else
+        initValueFuture.throw(err);
+      return;
+    }
+
+    // handle state changes
+    if (notif.state) {
+      if (notif.state === 'ready') {
+        if (initializing) {
+          initValuesFuture.return();
+        } else {
+          initValuesFuture.throw(
+            new Error(
+              "Currently can only observe point queries and orderBy/limit queries. For example: Table.get(id); Table.orderBy({ index: 'id' }).limit(4)."));
+        }
+      } else if (notif.state === 'initializing') {
+        initializing = true;
+      }
+      return;
+    }
+
+    if (notif.old_val === undefined && notif.new_val === null) {
+      // nothing found
+      return;
+    }
+
+    // at this point the notification has two fields: old_val and new_val
+
     if (! notif.old_val) {
       cbs.added(notif.new_val);
       return;
@@ -109,6 +134,8 @@ rtermbaseProto.observe = function (callbacks) {
     }
     cbs.changed(notif.new_val, notif.old_val);
   });
+
+  initValuesFuture.wait();
 
   return {
     stop: function () {
@@ -128,7 +155,7 @@ rtermbaseProto._publishCursor = function (sub) {
   try {
     Rethink.Table._publishCursor(self, sub, self._table.name);
   } catch (err) {
-    self.error(err);
+    sub.error(err);
   }
 };
 

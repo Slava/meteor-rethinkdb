@@ -18,3 +18,14 @@ sed -i '' "/'bluebird'/d" "$DIR/node_modules/rethinkdb/ast.js"
 "$DIR/node_modules/browserify/bin/cmd.js" "$DIR/rethink-query-builder.js" -o "$DIR/../_build/rethink-query-builder.js" -s ___Rethink_r___
 
 
+
+
+# Build the reqlite for the browser
+
+# always use the latest proto-def, the same that we are using for rethinkdb
+# driver itself
+rm "$DIR/node_modules/reqlite/lib/protodef.js"
+ln "$DIR/node_modules/rethinkdb/proto-def.js" "$DIR/node_modules/reqlite/lib/protodef.js"
+
+"$DIR/node_modules/browserify/bin/cmd.js" "$DIR/rethink-reqlite.js" -o "$DIR/../_build/rethink-reqlite.js" -s ___Rethink_reqlite___
+

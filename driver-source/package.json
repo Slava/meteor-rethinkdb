@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "browserify": "^9.0.8",
-    "rethinkdb": "*"
+    "rethinkdb": "*",
+    "reqlite": "https://github.com/Slava/reqlite/tarball/65af066250"
   }
 }

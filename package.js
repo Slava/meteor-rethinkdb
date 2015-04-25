@@ -14,6 +14,7 @@ Package.onUse(function(api) {
   api.addFiles('rethink.js', 'server');
   api.addFiles([
     '_build/rethink-query-builder.js',
+    '_build/rethink-reqlite.js',
     'rethink-client.js'
   ], 'client');
 

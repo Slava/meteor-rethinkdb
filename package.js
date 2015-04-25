@@ -12,7 +12,12 @@ Npm.depends({
 Package.onUse(function(api) {
 //  api.versionsFrom('1.1.0.2');
   api.addFiles('rethink.js', 'server');
-  api.export('Rethink', 'server');
+  api.addFiles([
+    '_build/rethink-query-builder.js',
+    'rethink-client.js'
+  ], 'client');
+
+  api.export('Rethink');
 });
 
 Package.onTest(function(api) {

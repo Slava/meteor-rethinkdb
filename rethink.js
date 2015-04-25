@@ -34,6 +34,10 @@ Rethink.Table.prototype._checkName = function () {
     throw new Error("The table '" + self.name + "' doesn't exist in your RethinkDB database.");
 };
 
+
+///////////////////////////////////////////////////////////////////////////////
+// Monkey-patching section
+///////////////////////////////////////////////////////////////////////////////
 var rdbvalProto = r.table('dummy').constructor.prototype.constructor.__super__.constructor.__super__;
 var rMethods = Object.keys(rdbvalProto).filter(function (x) { return x !== 'constructor'; });
 
@@ -58,9 +62,6 @@ rMethods.forEach(function (method) {
   };
 });
 
-///////////////////////////////////////////////////////////////////////////////
-// Monkey-patching section
-///////////////////////////////////////////////////////////////////////////////
 var rtermbaseProto = rdbvalProto.constructor.__super__;
 // monkey patch `run()`
 var originalRun = rtermbaseProto.run;

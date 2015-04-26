@@ -1,0 +1,3 @@
+A random file so git keeps this folder even if it is empty.
+This folder is used for building the package (compiling browserify packages, etc).
+

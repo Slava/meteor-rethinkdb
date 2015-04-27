@@ -5,14 +5,42 @@ Rethink.r = ___Rethink_r___;
 Rethink.reqlite = ___Rethink_reqlite___;
 var r = Rethink.r;
 
+var writeMethods = [
+  'insert',
+  'update',
+  'replace',
+  'delete'
+];
+
+var readMethods = [
+  'get',
+  'getAll',
+  'between',
+  'filter'
+];
+
+// Coarse-grained dependencies
+var tableDeps = {};
+
 Rethink.Table = function (name, options) {
   this.name = name;
   runReqliteQuery(r.tableCreate(name));
+  tableDeps[name] = new Tracker.Dependency();
 };
 
 // a global reqlite database used as a cache
 Rethink._reqliteDb = Rethink.reqlite.makeServer();
+
 var runReqliteQuery = function (q) {
+  if (q._writeQuery) {
+    // XXX this should be replaced with listening to change-feeds
+    Meteor.defer(function () {
+      tableDeps[q._table.name].changed();
+    });
+  } else if (q._readQuery) {
+    tableDeps[q._table.name].depend();
+  }
+
   var response = Rethink._reqliteDb.runQuery(q.build());
   var protodef = Rethink.reqlite.protoDef;
   var protoResponseType = protodef.Response.ResponseType;
@@ -51,12 +79,16 @@ for (var m in rdbvalProto) {
     rdbvalProto[m] = function () {
       var ret = original.apply(this, arguments);
       ret._table = this._table;
+      ret._writeQuery = this._writeQuery || writeMethods.indexOf(m) !== -1;
+      ret._readQuery = this._readQuery || readMethods.indexOf(m) !== -1;
       return ret;
     };
     Rethink.Table.prototype[m] = function () {
       var cursor = r.table(this.name);
       var ret = cursor[m].apply(cursor, arguments);
       ret._table = this;
+      ret._writeQuery = writeMethods.indexOf(m) !== -1;
+      ret._readQuery = readMethods.indexOf(m) !== -1;
       return ret;
     };
     Rethink.Table.prototype[m].displayName = m + " on Rethink.Table";
@@ -64,7 +96,11 @@ for (var m in rdbvalProto) {
 }
 
 Rethink.Table.prototype.run = function () {
-  return runReqliteQuery(r.table(this.name));
+  var q = r.table(this.name);
+  q._table = this;
+  q._writeQuery = false;
+  q._readQuery = true;
+  return runReqliteQuery(q);
 };
 
 // monkey-patch `run()`

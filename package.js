@@ -12,6 +12,7 @@ Npm.depends({
 Package.onUse(function(api) {
 //  api.versionsFrom('1.1.0.2');
   api.use('tracker', 'client');
+  api.use('random', 'client');
 
   api.addFiles('rethink.js', 'server');
   api.addFiles([

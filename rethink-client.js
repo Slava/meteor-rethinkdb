@@ -23,9 +23,92 @@ var readMethods = [
 var tableDeps = {};
 
 Rethink.Table = function (name, options) {
-  this.name = name;
+  options = options || {};
+
+  // Allow anonymous collections, but still give them some identifier
+  this.name = name || Random.id();
+
+  // anonymous collection
+  if (! name || options.connection === null) {
+    this._connection = null;
+  } else if (options.connection)
+    this._connection = options.connection;
+  else if (Meteor.isClient)
+    this._connection = Meteor.connection;
+  else
+    this._connection = Meteor.server;
+
+  // create this table in reqlite
   runReqliteQuery(r.tableCreate(name));
+
+  // create a coarse-grained Tracker dependency for this table
   tableDeps[name] = new Tracker.Dependency();
+
+  // hook it up to the DDP connection
+  this._registerStore();
+};
+
+Rethink.Table.prototype._registerStore = function () {
+  var self = this;
+  if (! self._connection || ! self._connection.registerStore)
+    return;
+
+  var ok = self._connection.registerStore(self.name, {
+    beginUpdate: function (batchSize, reset) {
+      console.log('begin update'); return;
+      if (batchSize > 1 || reset)
+        self._pauseObservers();
+      if (reset)
+        r.dropTable(self.name).run();
+    },
+    update: function (msg) {
+      var id = msg.id;
+      var doc = self.get(id).run();
+
+      if (msg.msg === 'replace') {
+        if (! msg.replace) {
+          if (doc)
+            self.get(id).delete().run();
+        } else if (! doc) {
+          self.insert(msg.replace).run();
+        } else {
+          self.get(id).replace(msg.replace).run();
+        }
+      } else if (msg.msg === 'added') {
+        if (doc) {
+          throw new Error("Expected not to find a document already present for an add");
+        }
+
+        var fields = msg.fields;
+        fields.id = id;
+        self.insert(fields).run();
+      } else if (msg.msg === 'removed') {
+        if (! doc)
+          throw new Error("Expected to find a document already present for removed");
+        self.get(id).delete().run();
+      } else if (msg.msg === 'changed') {
+        if (! doc)
+          throw new Error("Expected to find a document to change");
+        self.get(id).update(msg.fields).run();
+      } else {
+        throw new Error("I don't know how to deal with this message");
+      }
+    },
+    endUpdate: function () {
+      console.log('endupdate')
+      return;
+      self._resumeObservers();
+    },
+    saveOriginals: function () {
+      console.log('save originals')
+    },
+    retrieveOriginals: function () {
+      console.log('retrieve originals');
+    }
+  });
+
+  if (! ok)
+    throw new Error("There is already a table named '" + self.name + "'");
 };
 
 // a global reqlite database used as a cache
@@ -102,6 +185,7 @@ Rethink.Table.prototype.run = function () {
   q._readQuery = true;
   return runReqliteQuery(q);
 };
+Rethink.Table.prototype.fetch = Rethink.Table.prototype.toArray = Rethink.Table.prototype.run;
 
 // monkey-patch `run()`
 var rtermbaseProto = rdbvalProto.constructor.__super__;
@@ -135,6 +219,8 @@ function recursivelyConvertPseudotype (obj) {
 }
 
 function convertPseudotype (obj) {
+  if (! obj) return obj;
+
   // copy-pasted from the driver (compiled coffee)
   var i, _i, _len, _ref, _results;
   switch (obj['$reql_type$']) {

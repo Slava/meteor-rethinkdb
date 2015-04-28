@@ -27,6 +27,10 @@ Rethink.Table = function (name, options) {
 
   // Allow anonymous collections, but still give them some identifier
   this.name = name || Random.id();
+  this._prefix = '/' + this.name + '/';
+  // XXX a hacky dynamic variable that tracks if the following change is
+  // triggered by a connection and not by a user
+  this._localOnly = false;
 
   // anonymous collection
   if (! name || options.connection === null) {
@@ -39,10 +43,20 @@ Rethink.Table = function (name, options) {
     this._connection = Meteor.server;
 
   // create this table in reqlite
-  runReqliteQuery(r.tableCreate(name));
+  _runQuery(r.tableCreate(name).build());
 
   // create a coarse-grained Tracker dependency for this table
   tableDeps[name] = new Tracker.Dependency();
+
+  // create the RPC
+  if (this._connection) {
+    var runMethod = function (builtQuery, generatedKeys) {
+      return _runQuery(builtQuery, generatedKeys);
+    };
+    var methods = {};
+    methods[this._prefix + 'run'] = runMethod;
+    this._connection.methods(methods);
+  }
 
   // hook it up to the DDP connection
   this._registerStore();
@@ -58,21 +72,33 @@ Rethink.Table.prototype._registerStore = function () {
       console.log('begin update'); return;
       if (batchSize > 1 || reset)
         self._pauseObservers();
-      if (reset)
+      if (reset) {
+        self._localOnly = true;
         r.dropTable(self.name).run();
+        self._localOnly = false;
+      }
     },
     update: function (msg) {
       var id = msg.id;
+      self._localOnly = true;
       var doc = self.get(id).run();
+      self._localOnly = false;
 
       if (msg.msg === 'replace') {
         if (! msg.replace) {
-          if (doc)
+          if (doc) {
+            self._localOnly = true;
             self.get(id).delete().run();
+            self._localOnly = false;
+          }
         } else if (! doc) {
+          self._localOnly = true;
           self.insert(msg.replace).run();
+          self._localOnly = false;
         } else {
+          self._localOnly = true;
           self.get(id).replace(msg.replace).run();
+          self._localOnly = false;
         }
       } else if (msg.msg === 'added') {
         if (doc) {
@@ -81,14 +107,20 @@ Rethink.Table.prototype._registerStore = function () {
 
         var fields = msg.fields;
         fields.id = id;
+        self._localOnly = true;
         self.insert(fields).run();
+        self._localOnly = false;
       } else if (msg.msg === 'removed') {
         if (! doc)
           throw new Error("Expected to find a document already present for removed");
+        self._localOnly = true;
         self.get(id).delete().run();
+        self._localOnly = false;
       } else if (msg.msg === 'changed') {
         if (! doc)
           throw new Error("Expected to find a document to change");
+        self._localOnly = true;
+        self._localOnly = false;
         self.get(id).update(msg.fields).run();
       } else {
         throw new Error("I don't know how to deal with this message");
@@ -100,10 +132,12 @@ Rethink.Table.prototype._registerStore = function () {
       self._resumeObservers();
     },
     saveOriginals: function () {
-      console.log('save originals')
+      var table = Rethink._reqliteDb.databases.test.tables[self.name];
+      table.saveOriginals();
     },
     retrieveOriginals: function () {
-      console.log('retrieve originals');
+      var table = Rethink._reqliteDb.databases.test.tables[self.name];
+      return table.retrieveOriginals();
     }
   });
 
@@ -111,20 +145,45 @@ Rethink.Table.prototype._registerStore = function () {
     throw new Error("There is already a table named '" + self.name + "'");
 };
 
+Rethink.Table.prototype._makeNewID = function () {
+  var src = name ? DDP.randomStream('/collection/' + this.name) : Random;
+  return src.id();
+};
+
 // a global reqlite database used as a cache
 Rethink._reqliteDb = Rethink.reqlite.makeServer();
 
-var runReqliteQuery = function (q) {
+var runReqliteQuery = function (q, cb) {
+  var generatedKeys = null;
   if (q._writeQuery) {
     // XXX this should be replaced with listening to change-feeds
     Meteor.defer(function () {
       tableDeps[q._table.name].changed();
     });
+    if (q._insertDocs) {
+      // generate ids on the client
+      generatedKeys = [];
+      for (var i in q._insertDocs) {
+        if (! q._insertDocs[i].id) {
+          var genId = q._table._makeNewID();
+          q._insertDocs[i].id = Rethink.r(genId);
+          generatedKeys.push(genId);
+        }
+      }
+    }
   } else if (q._readQuery) {
     tableDeps[q._table.name].depend();
   }
 
-  var response = Rethink._reqliteDb.runQuery(q.build());
+  var builtQuery = q.build();
+
+  if (! q._writeQuery || ! q._table._connection || q._table._localOnly)
+    return _runQuery(builtQuery, generatedKeys);
+  q._table._connection.apply(q._table._prefix + 'run', [builtQuery, generatedKeys], {returnStubValue: true}, cb);
+};
+
+var _runQuery = function (builtQuery, generatedKeys) {
+  var response = Rethink._reqliteDb.runQuery(builtQuery);
   var protodef = Rethink.reqlite.protoDef;
   var protoResponseType = protodef.Response.ResponseType;
 
@@ -139,11 +198,13 @@ var runReqliteQuery = function (q) {
     // success response
     case protoResponseType.SUCCESS_ATOM:
       response = mkAtom(response);
+      if (generatedKeys)
+        response.generated_keys = generatedKeys;
       return response;
     default:
       throw new Error('This response type is not implemented by the reqlite driver yet: ' + response.t);
   }
-};
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Monkey-patching section
@@ -158,45 +219,98 @@ for (var m in rdbvalProto) {
     if (! rdbvalProto.hasOwnProperty(m) || m === 'constructor')
       return;
 
+    var propagateRetValue = function (ret, self) {
+      ret._writeQuery = self._writeQuery || writeMethods.indexOf(m) !== -1;
+      ret._readQuery = self._readQuery || readMethods.indexOf(m) !== -1;
+      if (m === 'insert') {
+        var docs = arguments[0].args[1].optargs;
+        if (!(docs instanceof Array))
+          docs = [docs];
+        self._insertDocs = docs;
+      }
+      ret._insertDocs = self._insertDocs;
+    };
+
     var original = rdbvalProto[m];
     rdbvalProto[m] = function () {
       var ret = original.apply(this, arguments);
       ret._table = this._table;
-      ret._writeQuery = this._writeQuery || writeMethods.indexOf(m) !== -1;
-      ret._readQuery = this._readQuery || readMethods.indexOf(m) !== -1;
+      propagateRetValue(ret, this);
       return ret;
     };
     Rethink.Table.prototype[m] = function () {
       var cursor = r.table(this.name);
       var ret = cursor[m].apply(cursor, arguments);
       ret._table = this;
-      ret._writeQuery = writeMethods.indexOf(m) !== -1;
-      ret._readQuery = readMethods.indexOf(m) !== -1;
+      propagateRetValue(ret, this);
       return ret;
     };
+
     Rethink.Table.prototype[m].displayName = m + " on Rethink.Table";
   })(m);
 }
 
-Rethink.Table.prototype.run = function () {
+Rethink.Table.prototype.run = function (cb) {
   var q = r.table(this.name);
   q._table = this;
   q._writeQuery = false;
   q._readQuery = true;
-  return runReqliteQuery(q);
+  return runReqliteQuery(q, cb);
 };
 Rethink.Table.prototype.fetch = Rethink.Table.prototype.toArray = Rethink.Table.prototype.run;
 
 // monkey-patch `run()`
 var rtermbaseProto = rdbvalProto.constructor.__super__;
-rtermbaseProto.run = function () {
-  return runReqliteQuery(this);
+rtermbaseProto.run = function (cb) {
+  return runReqliteQuery(this, cb);
 };
 
+
+// patch Reqlite's _saveOriginal to control the latency comp. cycle
+Rethink.reqlite.Table.prototype._saveOriginal = function (id, oldVal) {
+  if (! this._savedOriginals)
+    return;
+  if (this._savedOriginals.has(id))
+    return;
+  this._savedOriginals.set(id, oldVal);
+};
+Rethink.reqlite.Table.prototype.saveOriginals = function () {
+  var self = this;
+  if (self._savedOriginals)
+    throw new Error("Called saveOriginals twice without retrieveOriginals");
+  self._savedOriginals = new PkMap();
+};
+Rethink.reqlite.Table.prototype.retrieveOriginals = function () {
+  var self = this;
+  if (!self._savedOriginals)
+    throw new Error("Called retrieveOriginals without saveOriginals");
+
+  var originals = self._savedOriginals;
+  self._savedOriginals = null;
+  return originals;
+};
 
 ///////////////////////////////////////////////////////////////////////////////
 // Utils
 ///////////////////////////////////////////////////////////////////////////////
+function PkMap () { this._map = {}; this._ids = {}; };
+var makeInternalPk = Rethink.reqlite.helper.makeInternalPk;
+PkMap.prototype.has = function (id) {
+  return this._map.hasOwnProperty(makeInternalPk(id));
+};
+PkMap.prototype.set = function (id, val) {
+  this._map[makeInternalPk(id)] = val;
+  this._ids[makeInternalPk(id)] = id;
+};
+PkMap.prototype.forEach = function (cb) {
+  for (var key in this._map)
+    if (this._map.hasOwnProperty(key)) {
+      var val = this._map[key];
+      var id = this._ids[key];
+      cb(val, id);
+    }
+};
+
 function mkErr (ErrClass, repsponse) {
   return new ErrClass(mkAtom(response), response.b);
 }

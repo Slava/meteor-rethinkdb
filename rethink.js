@@ -22,10 +22,30 @@ var tables = wait(r.tableList().run(connection));
 
 Rethink.Table = function (name, options) {
   var self = this;
+  options = options || {};
+
   self.name = name;
-  self._connection = connection || options.dbConnection;
+  self._prefix = '/' + name + '/';
+  self._dbConnection = options.dbConnection || connection;
+  self._connection = options.connection || Meteor.server;
 
   self._checkName();
+
+  // define an RPC end-point
+  var methods = {};
+  methods[self._prefix + 'run'] = function (builtQuery, generatedKeys) {
+    function FakeQuery(serializedQuery) {
+      this.parsed = serializedQuery;
+      this.tt = this.parsed[0];
+      this.queryString = ":(";
+    }
+    FakeQuery.prototype.build = function () { return this.parsed; };
+
+    var f = new Future;
+    self._dbConnection._start(new FakeQuery(builtQuery), f.resolver(), {});
+    return f.wait();
+  };
+  self._connection.methods(methods);
 };
 
 Rethink.Table.prototype._checkName = function () {
@@ -46,7 +66,7 @@ rMethods.forEach(function (method) {
   var original = rdbvalProto[method];
   rdbvalProto[method] = function () {
     var ret = original.apply(this, arguments);
-    ret._connection = this._connection;
+    ret._dbConnection = this._dbConnection;
     ret._table = this._table;
     return ret;
   };
@@ -56,7 +76,7 @@ rMethods.forEach(function (method) {
   Rethink.Table.prototype[method] = function () {
     var o = r.table(this.name);
     var ret = o[method].apply(o, arguments);
-    ret._connection = this._connection;
+    ret._dbConnection = this._dbConnection;
     ret._table = this;
     return ret;
   };
@@ -67,7 +87,7 @@ var rtermbaseProto = rdbvalProto.constructor.__super__;
 var originalRun = rtermbaseProto.run;
 rtermbaseProto.run = function () {
   var args = [].slice.call(arguments);
-  args.unshift(this._connection);
+  args.unshift(this._dbConnection);
   return wait(originalRun.apply(this, args));
 };
 

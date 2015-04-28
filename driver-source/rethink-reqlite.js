@@ -4,6 +4,7 @@ var e = {
   'Document': require('reqlite/lib/document.js'),
   Query: require('reqlite/lib/query.js'),
   protoDef: require('reqlite/lib/protodef.js'),
+  helper: require('reqlite/lib/helper.js'),
   makeServer: function () {
     return {
       databases: {

@@ -1,8 +1,8 @@
 Package.describe({
-  name: 'rethink',
+  name: 'simple:rethink',
   version: '0.0.1',
   summary: 'RethinkDB support for Meteor.',
-  documentation: null
+  documentation: 'README.md'
 });
 
 Npm.depends({
@@ -13,7 +13,7 @@ Package.onUse(function(api) {
 //  api.versionsFrom('1.1.0.2');
   api.use('tracker', 'client');
   api.use('random', 'client');
-  api.use('ddp-client', 'client');
+  api.use('ddp', 'client');
 
   api.addFiles('rethink.js', 'server');
   api.addFiles([
@@ -26,6 +26,7 @@ Package.onUse(function(api) {
 });
 
 Package.onTest(function(api) {
-  api.use('tinytest');
-  api.use('rethink');
+  api.use(['mike:mocha-package', "practicalmeteor:chai"]);
+  api.use('simple:rethink');
+  api.addFiles('tests/tests.js');
 });

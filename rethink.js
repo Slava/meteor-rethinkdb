@@ -6,17 +6,23 @@ Rethink = {};
 Rethink.r = r;
 
 var rethinkUrl = process.env.RETHINK_URL;
-if (! rethinkUrl) {
-  throw new Error("Set the RETHINK_URL environment variable. Example: rethinkdb://localhost:28015/database?authKey=somekey");
-}
 
-var parsedConnectionUrl = url.parse(rethinkUrl);
-var connection = wait(r.connect({
+var parsedConnectionUrl = url.parse(rethinkUrl || 'rethinkdb://localhost:28015/test');
+var connection = r.connect({
   host: parsedConnectionUrl.hostname || 'localhost',
   port: parsedConnectionUrl.port || '28015',
   db: (parsedConnectionUrl.pathname || '/test').split('/')[1],
   authKey: (parsedConnectionUrl.query || {}).authKey
-}));
+});
+
+try {
+  connection = wait(connection);
+} catch (err) {
+  throw new Error(
+    "Error connecting to RethinkDB: " + err.stack + "\n\n" +
+    "Set the RETHINK_URL environment variable. Example: rethinkdb://localhost:28015/database?authKey=somekey"
+  );
+}
 
 var tables = wait(r.tableList().run(connection));
 

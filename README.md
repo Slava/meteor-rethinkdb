@@ -85,4 +85,12 @@ script:
 This script will output a built version of Reqlite and driver for the
 client-side cache.
 
+##Running tests
+
+Build the package first, then run the tests.
+
+```bash
+./driver-source/build.sh
+meteor test-packages --driver-package respondly:test-reporter
+```
 

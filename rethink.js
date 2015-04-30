@@ -140,10 +140,10 @@ rtermbaseProto.observe = function (callbacks) {
   var stream = self.changes({ includeStates: true }).run();
   stream.each(function (err, notif) {
     if (err) {
-      if (initValueFuture.isResolved())
+      if (initValuesFuture.isResolved())
         cbs.error(err);
       else
-        initValueFuture.throw(err);
+        initValuesFuture.throw(err);
       return;
     }
 
@@ -185,7 +185,7 @@ rtermbaseProto.observe = function (callbacks) {
 
   return {
     stop: function () {
-      stream.close();
+      wait(stream.close());
     }
   };
 };

@@ -42,5 +42,11 @@ describe('Querying data from a table', function () {
 
     done();
   });
+
+  it('can delete data', function (done) {
+    var doc = coll.filter({ name: 'Slava' }).fetch()[0];
+    expect(coll.get(doc.id).delete().run().deleted).to.be.equal(1);
+    done();
+  });
 });
 

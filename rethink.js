@@ -19,12 +19,11 @@ try {
   connection = wait(connection);
 } catch (err) {
   throw new Error(
-    "Error connecting to RethinkDB: " + err.stack + "\n\n" +
+    "Error connecting to RethinkDB: " + err.message + "\n\n" +
     "Set the RETHINK_URL environment variable. Example: rethinkdb://localhost:28015/database?authKey=somekey"
   );
 }
-
-var tables = wait(r.tableList().run(connection));
+Rethink._connection = connection;
 
 Rethink.Table = function (name, options) {
   var self = this;
@@ -35,7 +34,7 @@ Rethink.Table = function (name, options) {
   self._dbConnection = options.dbConnection || connection;
   self._connection = options.connection || Meteor.server;
 
-  self._checkName();
+  Rethink.Table._checkName(name);
 
   // define an RPC end-point
   var methods = {};
@@ -54,10 +53,15 @@ Rethink.Table = function (name, options) {
   self._connection.methods(methods);
 };
 
-Rethink.Table.prototype._checkName = function () {
+Rethink.Table._checkName = function (name) {
+  var tables = r.tableList().run(connection);
+  if (tables.indexOf(name) === -1)
+    throw new Error("The table '" + name + "' doesn't exist in your RethinkDB database.");
+};
+
+Rethink.Table.prototype._deregisterMethods = function () {
   var self = this;
-  if (tables.indexOf(self.name) === -1)
-    throw new Error("The table '" + self.name + "' doesn't exist in your RethinkDB database.");
+  delete self._connection.method_handlers[self._prefix + 'run'];
 };
 
 
@@ -72,7 +76,7 @@ rMethods.forEach(function (method) {
   var original = rdbvalProto[method];
   rdbvalProto[method] = function () {
     var ret = original.apply(this, arguments);
-    ret._dbConnection = this._dbConnection;
+    ret._connection = this._connection;
     ret._table = this._table;
     return ret;
   };
@@ -82,7 +86,7 @@ rMethods.forEach(function (method) {
   Rethink.Table.prototype[method] = function () {
     var o = r.table(this.name);
     var ret = o[method].apply(o, arguments);
-    ret._dbConnection = this._dbConnection;
+    ret._connection = this._dbConnection;
     ret._table = this;
     return ret;
   };
@@ -91,11 +95,26 @@ rMethods.forEach(function (method) {
 var rtermbaseProto = rdbvalProto.constructor.__super__;
 // monkey patch `run()`
 var originalRun = rtermbaseProto.run;
-rtermbaseProto.run = function () {
+rtermbaseProto.run = function (conn) {
   var args = [].slice.call(arguments);
-  args.unshift(this._dbConnection);
+  if (! args[0])
+    args[0] = this._connection;
   return wait(originalRun.apply(this, args));
 };
+
+var rdbopProto = r.table('dummy').get('dummy').constructor.__super__.constructor.__super__.constructor.prototype;
+rMethods = Object.keys(rdbopProto).filter(function (x) { return x !== 'constructor'; });
+rMethods.forEach(function (method) {
+  var original = rdbopProto[method];
+  rdbopProto[method] = function () {
+    var ret = original.apply(this, arguments);
+    ret._connection = this._connection;
+    ret._table = this._table;
+    return ret;
+  };
+
+  rdbopProto[method].displayName = 'monkey patched ' + method;
+});
 
 ///////////////////////////////////////////////////////////////////////////////
 // Extra cursor methods as syntactic sugar

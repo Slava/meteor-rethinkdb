@@ -26,7 +26,7 @@ Package.onUse(function(api) {
 });
 
 Package.onTest(function(api) {
-  api.use(['mike:mocha-package', "practicalmeteor:chai"]);
+  api.use(['mike:mocha-package', 'practicalmeteor:chai']);
   api.use('simple:rethink');
-  api.addFiles('tests/tests.js');
+  api.addFiles('tests/tests.js', 'server');
 });

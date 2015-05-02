@@ -15,14 +15,14 @@ The goals and plans of this package:
 - Raw access to RethinkDB on the server, no ORMs
 - Client-side cache accessible with the RethinkDB query language (ReQL)
 - Use Meteor's publications/subscriptions model
-- Take advantage of Meteor's "Latency Compensation" propeties (optimistic
-  client-side updates without waiting for the server to respond)
+- Take advantage of Meteor's "Latency Compensation" propeties (optimistic client-side updates without waiting for the server to respond)
 - User accounts stored in RethinkDB instead of MongoDB (planned)
 
 1. [Using the package](#using-the-package)
   1. [Setup](#setup)
   1. [Tables](#tables)
   1. [Queries](#queries)
+  1. [Publishing](#publishing)
 1. [Package development](#package-development)
 
 ##Using the package
@@ -99,7 +99,8 @@ Players.orderBy(r.desc('score')).limit(3).fetch();
 
 ###Publishing
 
-TODO document
+Currently, observations (the type of queries you return from publish functions)
+can only be [point queries](http://www.rethinkdb.com/api/javascript/get/) (`.get(primaryKey)`) or orderBy & limit queries (`.orderBy({ index: 'id' }).limit(4)`).
 
 ##Package development
 

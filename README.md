@@ -62,7 +62,7 @@ When using `new Mongo.Collection('items')`, the collection is automatically
 created in MongoDB if it does not exist. With RethinkDB, you must create the table
 yourself beforehand. You can do so in the web UI:
 
-http://localhost:8080/#tables
+[http://localhost:8080/#tables](http://localhost:8080/#tables)
 
 Then declare the table:
 

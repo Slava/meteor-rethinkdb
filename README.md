@@ -4,6 +4,8 @@
 meteor add simple:rethink
 ```
 
+Demo app: https://github.com/Slava/meteor-rethinkdb-demo
+
 This packages aims to provide a first-class experience working with
 [RethinkDB](https://rethinkdb.com) building full-stack real-time web and mobile
 apps on the [Meteor](https://meteor.com) framework.
@@ -14,16 +16,21 @@ The goals and plans of this package:
 - Client-side cache accessible with the RethinkDB query language (ReQL)
 - Use Meteor's publications/subscriptions model
 - Take advantage of Meteor's "Latency Compensation" propeties (optimistic
-  client-side updates without waiting for a server to respond)
-- User accounts stored in RethinkDB and not in MongoDB (in plans)
+  client-side updates without waiting for the server to respond)
+- User accounts stored in RethinkDB instead of MongoDB (planned)
 
+1. [Using the package](#using-the-package)
+  1. [Setup](#setup)
+  1. [Tables](#tables)
+  1. [Queries](#queries)
+1. [Package development](#package-development)
 
+##Using the package
 
+###Setup
 
-##Using the Package
-
-Adding a package is as simple as running the following command in your app's
-folder:
+Adding a package is as simple as running the following command in your Meteor
+app's directory:
 
 ```
 meteor add simple:rethink
@@ -37,44 +44,66 @@ env RETHINK_URL=rethinkdb://user:password@hostname:port/database meteor run
 ```
 
 If you have an instance of RethinkDB running locally on your development
-computer, the package will automatically connect to it on `localhost:28015`.
+computer, the package will automatically connect to the `test` db on `localhost:28015`.
+
+To install and run RethinkDB on a Mac:
+
+```
+$ brew update
+$ brew install rethinkdb
+$ rethinkdb
+```
+
+Or [install on another OS](http://rethinkdb.com/docs/install/).
 
 ###Tables
 
-Declare a table connected to the database on the server and a client-side cache
-on the client, (be sure that you have created the table in your database
-before-hand):
+When using `new Mongo.Collection('items')`, the collection is automatically
+created in MongoDB if it does not exist. With RethinkDB, you must create the table
+yourself beforehand. You can do so in the web UI:
+
+http://localhost:8080/#tables
+
+Then declare the table:
 
 ```javascript
 Players = Rethink.Table('players');
 ```
 
-You can query the data using ReQL:
+###Queries
+
+Query the data using the
+[Javascript API](http://www.rethinkdb.com/api/javascript/) for [ReQL](http://rethinkdb.com/docs/introduction-to-reql/):
 
 ```javascript
 console.log('Number of players:', Players.count().run());
 console.log('All players:', Players.run().toArray());
+console.log('Updating players:', Players.filter({team: 'Knicks'}).update({city: 'NYC'}).run());
 ```
 
-There is a shortcut for fetching the documents without turning a cursor into an
-array:
+`.fetch()` is a shortcut for `.run().toArray()`, fetching the documents without
+turning the cursor into an array:
 
 ```javascript
 console.log('All players:', Players.fetch());
 ```
 
-For constructing more complex queries, you can use the `Rethink.r` namespace.
+Construct more complex queries with `Rethink.r`:
 
 ```javascript
 var r = Rethink.r;
 
 // Top Players
-Players.orderBy(r.dsc('score')).limit(3).fetch();
+Players.orderBy(r.desc('score')).limit(3).fetch();
 ```
 
-##Package Development
+###Publishing
 
-Since the package relies on RethinkDB node driver and Reqlite to build the
+TODO document
+
+##Package development
+
+Since the package relies on the RethinkDB node driver and Reqlite to build the
 package, make sure `npm` is available and ready for use. Then run the build
 script:
 
@@ -85,7 +114,7 @@ script:
 This script will output a built version of Reqlite and driver for the
 client-side cache.
 
-##Running tests
+###Running tests
 
 Build the package first, then run the tests.
 

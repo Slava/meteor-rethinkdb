@@ -15,10 +15,17 @@ Package.onUse(function(api) {
   api.use('random', 'client');
   api.use('ddp', 'client');
 
-  api.addFiles('rethink.js', 'server');
+  api.addFiles([
+    'init.js',
+    'monkey-patching.js',
+    'rethink.js'
+  ], 'server');
+
   api.addFiles([
     '_build/rethink-query-builder.js',
     '_build/rethink-reqlite.js',
+    'init.js',
+    'monkey-patching.js',
     'rethink-client.js'
   ], 'client');
 

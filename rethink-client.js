@@ -1,8 +1,3 @@
-Rethink = {};
-
-// generated from the driver
-Rethink.r = ___Rethink_r___;
-Rethink.reqlite = ___Rethink_reqlite___;
 var r = Rethink.r;
 
 var writeMethods = [
@@ -209,46 +204,33 @@ var _runQuery = function (builtQuery, generatedKeys) {
 ///////////////////////////////////////////////////////////////////////////////
 // Monkey-patching section
 ///////////////////////////////////////////////////////////////////////////////
-var tableCursor = r.table('dummy');
-var rdbvalProto = tableCursor.constructor.__super__.constructor.__super__;
+var propagateRetValue = function (ret) {
+  var self = this;
+  ret._writeQuery = self._writeQuery || writeMethods.indexOf(m) !== -1;
+  ret._readQuery = self._readQuery || readMethods.indexOf(m) !== -1;
+  ret._table = self._table;
 
-// all methods pass along the table reference and the Table class has all the
-// methods as a raw table cursor.
-for (var m in rdbvalProto) {
-  (function (m) {
-    if (! rdbvalProto.hasOwnProperty(m) || m === 'constructor')
-      return;
+  if (m === 'insert') {
+    var docs = arguments[0].args[1].optargs;
+    if (!(docs instanceof Array))
+      docs = [docs];
+    self._insertDocs = docs;
+  }
+  ret._insertDocs = self._insertDocs;
+};
 
-    var propagateRetValue = function (ret, self) {
-      ret._writeQuery = self._writeQuery || writeMethods.indexOf(m) !== -1;
-      ret._readQuery = self._readQuery || readMethods.indexOf(m) !== -1;
-      if (m === 'insert') {
-        var docs = arguments[0].args[1].optargs;
-        if (!(docs instanceof Array))
-          docs = [docs];
-        self._insertDocs = docs;
-      }
-      ret._insertDocs = self._insertDocs;
-    };
+wrapCursorMethods(propagateRetValue);
+wrapTableMethods(function (ret) {
+  propagateRetValue.call(this, ret);
+  ret._table = this;
+});
 
-    var original = rdbvalProto[m];
-    rdbvalProto[m] = function () {
-      var ret = original.apply(this, arguments);
-      ret._table = this._table;
-      propagateRetValue(ret, this);
-      return ret;
-    };
-    Rethink.Table.prototype[m] = function () {
-      var cursor = r.table(this.name);
-      var ret = cursor[m].apply(cursor, arguments);
-      ret._table = this;
-      propagateRetValue(ret, this);
-      return ret;
-    };
-
-    Rethink.Table.prototype[m].displayName = m + " on Rethink.Table";
-  })(m);
-}
+// monkey-patch `run()`
+attachCursorMethod('run', function () {
+  return function () {
+    return runReqliteQuery(this, cb);
+  };
+});
 
 Rethink.Table.prototype.run = function (cb) {
   var q = r.table(this.name);
@@ -257,13 +239,8 @@ Rethink.Table.prototype.run = function (cb) {
   q._readQuery = true;
   return runReqliteQuery(q, cb);
 };
-Rethink.Table.prototype.fetch = Rethink.Table.prototype.toArray = Rethink.Table.prototype.run;
 
-// monkey-patch `run()`
-var rtermbaseProto = rdbvalProto.constructor.__super__;
-rtermbaseProto.run = function (cb) {
-  return runReqliteQuery(this, cb);
-};
+Rethink.Table.prototype.fetch = Rethink.Table.prototype.toArray = Rethink.Table.prototype.run;
 
 
 // patch Reqlite's _saveOriginal to control the latency comp. cycle

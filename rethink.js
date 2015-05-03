@@ -1,9 +1,6 @@
 var Future = Npm.require('fibers/future');
 var url = Npm.require('url');
-var r = Npm.require('rethinkdb');
-
-Rethink = {};
-Rethink.r = r;
+var r = Rethink.r;
 
 var rethinkUrl = process.env.RETHINK_URL;
 
@@ -68,63 +65,38 @@ Rethink.Table.prototype._deregisterMethods = function () {
 ///////////////////////////////////////////////////////////////////////////////
 // Monkey-patching section
 ///////////////////////////////////////////////////////////////////////////////
-var rdbvalProto = r.table('dummy').constructor.__super__.constructor.__super__;
-var rMethods = Object.keys(rdbvalProto).filter(function (x) { return x !== 'constructor'; });
-
-// Hacky monkey-patching
-rMethods.forEach(function (method) {
-  var original = rdbvalProto[method];
-  rdbvalProto[method] = function () {
-    var ret = original.apply(this, arguments);
-    ret._connection = this._connection;
-    ret._table = this._table;
-    return ret;
-  };
-
-  rdbvalProto[method].displayName = 'monkey patched ' + method;
-
-  Rethink.Table.prototype[method] = function () {
-    var o = r.table(this.name);
-    var ret = o[method].apply(o, arguments);
-    ret._connection = this._dbConnection;
-    ret._table = this;
-    return ret;
-  };
+wrapCursorMethods(function (ret) {
+  ret._connection = this._connection;
+  ret._table = this._table;
 });
+wrapTableMethods(function (ret) {
+  ret._connection = this._dbConnection;
+  ret._table = this;
+}, Rethink.Table.prototype);
 
-var rtermbaseProto = rdbvalProto.constructor.__super__;
 // monkey patch `run()`
-var originalRun = rtermbaseProto.run;
-rtermbaseProto.run = function (conn) {
-  var args = [].slice.call(arguments);
-  if (! args[0])
-    args[0] = this._connection;
-  return wait(originalRun.apply(this, args));
-};
-
-var rdbopProto = r.table('dummy').get('dummy').constructor.__super__.constructor.__super__.constructor.prototype;
-rMethods = Object.keys(rdbopProto).filter(function (x) { return x !== 'constructor'; });
-rMethods.forEach(function (method) {
-  var original = rdbopProto[method];
-  rdbopProto[method] = function () {
-    var ret = original.apply(this, arguments);
-    ret._connection = this._connection;
-    ret._table = this._table;
-    return ret;
+attachCursorMethod('run', function (proto) {
+  var originalRun = proto.run;
+  return function (conn) {
+    var args = [].slice.call(arguments);
+    if (! args[0])
+      args[0] = this._connection;
+    var res = wait(originalRun.apply(this, args));
+    return res;
   };
-
-  rdbopProto[method].displayName = 'monkey patched ' + method;
 });
 
 ///////////////////////////////////////////////////////////////////////////////
 // Extra cursor methods as syntactic sugar
 ///////////////////////////////////////////////////////////////////////////////
-rtermbaseProto.fetch = function () {
-  var self = this;
-  return wait(self.run().toArray());
-};
+attachCursorMethod('fetch', function () {
+  return function () {
+    var self = this;
+    return wait(self.run().toArray());
+  };
+});
 
-rtermbaseProto.observe = function (callbacks) {
+var observe = function (callbacks) {
   var cbs = {
     added: callbacks.added || function () {},
     changed: callbacks.changed || function () {},
@@ -189,21 +161,27 @@ rtermbaseProto.observe = function (callbacks) {
     }
   };
 };
+attachCursorMethod('observe', function () {
+  return observe;
+});
 
 Rethink.Table.prototype._publishCursor = function (sub) {
   var self = this;
   return self.filter({})._publishCursor(sub);
 };
 
-rtermbaseProto._publishCursor = function (sub) {
-  var self = this;
+attachCursorMethod('_publishCursor', function () {
+  return function (sub) {
+    var self = this;
 
-  try {
-    Rethink.Table._publishCursor(self, sub, self._table.name);
-  } catch (err) {
-    sub.error(err);
-  }
-};
+    try {
+      Rethink.Table._publishCursor(self, sub, self._table.name);
+    } catch (err) {
+      sub.error(err);
+    }
+  };
+});
+
 
 Rethink.Table._publishCursor = function (cursor, sub, tableName) {
   var observeHandle = cursor.observe({

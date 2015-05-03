@@ -26,7 +26,9 @@ Package.onUse(function(api) {
     '_build/rethink-reqlite.js',
     'init.js',
     'monkey-patching.js',
-    'rethink-client.js'
+    'rethink-client.js',
+    'rethink-client-utils.js',
+    'reql-client-errors.js'
   ], 'client');
 
   api.export('Rethink');

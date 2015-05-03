@@ -23,7 +23,7 @@ wrapTableMethods = function (f, proto) {
           var rt = r.table(this.name);
           var ret = rt[m].apply(rt, arguments);
           if (typeof ret === 'object' || typeof ret === 'function')
-            f.call(this, ret);
+            f.call(this, ret, m);
           return ret;
         };
       })(m);
@@ -38,7 +38,7 @@ var wrapMethod = function (method, f, proto) {
   var original = proto[method];
   proto[method] = function () {
     var ret = original.apply(this, arguments);
-    f.call(this, ret);
+    f.call(this, ret, method);
     return ret;
   };
   proto[method].displayName = 'monkey patched ' + method;

@@ -24,6 +24,7 @@ The goals and plans of this package:
   1. [Queries](#queries)
   1. [Publishing](#publishing)
 1. [Package development](#package-development)
+1. [Contributions](#contributions)
 
 ##Using the package
 
@@ -124,3 +125,7 @@ Build the package first, then run the tests.
 meteor test-packages --driver-package respondly:test-reporter
 ```
 
+
+##Contributions
+
+Currently this project is welcoming contributions to Reqlite, the mini-implementation of RethinkDB in browser that this package is using on the client-side for DB operations simulations. Also, this project would appreciate more tests testing out different commands.

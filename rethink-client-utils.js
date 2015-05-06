@@ -1,4 +1,4 @@
-var PkMap = function () { this._map = {}; this._ids = {}; };
+PkMap = function () { this._map = {}; this._ids = {}; };
 var makeInternalPk = Rethink.reqlite.helper.makeInternalPk;
 PkMap.prototype.has = function (id) {
   return this._map.hasOwnProperty(makeInternalPk(id));

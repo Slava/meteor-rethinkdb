@@ -226,8 +226,8 @@ wrapTableMethods(function (ret, m) {
 }, Rethink.Table.prototype);
 
 // monkey-patch `run()`
-attachCursorMethod('run', function (cb) {
-  return function () {
+attachCursorMethod('run', function () {
+  return function (cb) {
     return runReqliteQuery(this, cb);
   };
 });

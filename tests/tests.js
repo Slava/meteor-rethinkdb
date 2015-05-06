@@ -79,10 +79,9 @@ describe('Observing a cursor', function () {
         if (doneObserving) assert.fail('should not get notified after a stopped observe');
         messages.push(['a', doc]);
       },
-      changed: function (oldDoc, newDoc) {
-        console.log('changed')
+      changed: function (newDoc, oldDoc) {
         if (doneObserving) assert.fail('should not get notified after a stopped observe');
-        messages.push(['c', oldDoc, newDoc]);
+        messages.push(['c', newDoc, oldDoc]);
       },
       removed: function (doc) {
         if (doneObserving) assert.fail('should not get notified after a stopped observe');
@@ -114,13 +113,13 @@ describe('Observing a cursor', function () {
 
   it('notices updates', function (done) {
     finishObserve(function () {
-      coll.filter(r.row('obj').gt(1)).update(r.row('obj').add(3)).run();
+      coll.filter(r.row('obj').gt(1)).update({obj: r.row('obj').add(3)}).run();
     });
     expect(messages).to.have.length(1);
     var m = messages.shift();
     expect(m[0]).to.be.equal('c');
-    expect(m[1].obj).to.be.equal(2);
-    expect(m[2].obj).to.be.equal(5);
+    expect(m[1].obj).to.be.equal(5);
+    expect(m[2].obj).to.be.equal(2);
     done();
   });
 

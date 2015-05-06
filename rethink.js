@@ -2,6 +2,13 @@ var Future = Npm.require('fibers/future');
 var url = Npm.require('url');
 var r = Rethink.r;
 
+var writeMethods = [
+  'insert',
+  'update',
+  'replace',
+  'delete'
+];
+
 var rethinkUrl = process.env.RETHINK_URL;
 
 var parsedConnectionUrl = url.parse(rethinkUrl || 'rethinkdb://localhost:28015/test');
@@ -30,6 +37,8 @@ Rethink.Table = function (name, options) {
   self._prefix = '/' + name + '/';
   self._dbConnection = options.dbConnection || connection;
   self._connection = options.connection || Meteor.server;
+  self._synthEventCallbacks = [];
+  self._lastSynthEvent = 0;
 
   Rethink.Table._checkName(name);
 
@@ -65,25 +74,60 @@ Rethink.Table.prototype._deregisterMethods = function () {
 ///////////////////////////////////////////////////////////////////////////////
 // Monkey-patching section
 ///////////////////////////////////////////////////////////////////////////////
-wrapCursorMethods(function (ret) {
+wrapCursorMethods(function (ret, m) {
   ret._connection = this._connection;
   ret._table = this._table;
+  ret._writeQuery = this._writeQuery || writeMethods.indexOf(m) !== -1;
 });
-wrapTableMethods(function (ret) {
+wrapTableMethods(function (ret, m) {
   ret._connection = this._dbConnection;
   ret._table = this;
+  ret._writeQuery = writeMethods.indexOf(m) !== -1;
 }, Rethink.Table.prototype);
 
 // monkey patch `run()`
+var originalRun;
 attachCursorMethod('run', function (proto) {
-  var originalRun = proto.run;
-  return function (conn) {
-    var args = [].slice.call(arguments);
-    if (! args[0])
-      args[0] = this._connection;
-    var res = wait(originalRun.apply(this, args));
-    return res;
+  originalRun = proto.run;
+  return function (conn, callback) {
+    if (! conn || typeof conn === 'function') {
+      callback = callback || conn;
+      conn = this._connection;
+    }
+
+    var future = null;
+    if (! callback) {
+      future = new Future;
+      callback = future.resolver();
+    }
+
+    if (this._writeQuery && DDPServer._CurrentWriteFence.get()) {
+      var table = this._table;
+      var write = DDPServer._CurrentWriteFence.get().beginWrite();
+      var origCb = callback;
+      var id = Math.random();
+      callback = function (err, res) {
+        if (! err) {
+          // release this write only after we are sure the event was processed
+          registerSyntheticEvent(table, function () {
+            write.committed();
+          });
+        } else {
+          write.committed();
+        }
+        origCb(err, res);
+      };
+    }
+
+    callback = Meteor.bindEnvironment(callback);
+
+    originalRun.call(this, conn, callback);
+    if (future)
+      return future.wait();
   };
+});
+attachCursorMethod('_run', function () {
+  return originalRun;
 });
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -95,6 +139,36 @@ attachCursorMethod('fetch', function () {
     return wait(self.run().toArray());
   };
 });
+
+var SYNTH_EVENT_ID = 'meteor-rethink-synthetic-event';
+var registerSyntheticEvent = function (table, cb) {
+  var synthInsert = wait(table.insert({
+    id: SYNTH_EVENT_ID,
+    ts: r.now()
+  }, {
+    returnChanges: true,
+    conflict: 'replace'
+  })._run(table._dbConnection));
+
+  var ts;
+  var change = synthInsert.changes[0];
+  if (change.new_val)
+    ts = change.new_val.ts;
+  else if (change.old_val)
+    ts = change.old_val.ts;
+  else
+    throw new Error('Error in Rethink-Meteor: unexpected changes field: ' + JSON.stringify(change));
+
+  if (table._lastSynthEvent >= ts) {
+    Meteor.defer(cb);
+    return;
+  }
+
+  table._synthEventCallbacks.push({
+    f: cb,
+    ts: ts
+  });
+};
 
 var observe = function (callbacks) {
   var cbs = {
@@ -110,7 +184,7 @@ var observe = function (callbacks) {
   var initializing = false;
 
   var stream = self.changes({ includeStates: true }).run();
-  stream.each(function (err, notif) {
+  stream.each(Meteor.bindEnvironment(function (err, notif) {
     if (err) {
       if (initValuesFuture.isResolved())
         cbs.error(err);
@@ -142,6 +216,19 @@ var observe = function (callbacks) {
 
     // at this point the notification has two fields: old_val and new_val
 
+    // check for the "special" doc
+    if (notif.new_val && notif.new_val.id === SYNTH_EVENT_ID) {
+      var ts = notif.new_val.ts;
+      var q = self._table._synthEventCallbacks;
+      while (q.length > 0 && q[0].ts <= ts) {
+        var front = q.shift();
+        Meteor.defer(front.f);
+      }
+      self._table._lastSynthEvent = ts;
+      return;
+    }
+
+    // it is a regular doc, push an event for it
     if (! notif.old_val) {
       cbs.added(notif.new_val);
       return;
@@ -151,7 +238,7 @@ var observe = function (callbacks) {
       return;
     }
     cbs.changed(notif.new_val, notif.old_val);
-  });
+  }));
 
   initValuesFuture.wait();
 
@@ -220,14 +307,17 @@ function diffObject (oldDoc, newDoc) {
   return diff;
 }
 
-function wait (promise) {
+function wait (promise, after) {
   var f = new Future;
-  promise.then(function (res) {
+  promise.then(Meteor.bindEnvironment(function (res) {
     f.return(res);
-  }, function (err) {
+  }), Meteor.bindEnvironment(function (err) {
     f.throw(err);
-  });
+  }));
 
-  return f.wait();
+  var res = f.wait();
+  if (after)
+    after();
+  return res;
 }
 

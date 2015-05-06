@@ -10,7 +10,7 @@ Npm.depends({
 });
 
 Package.onUse(function(api) {
-//  api.versionsFrom('1.1.0.2');
+  api.versionsFrom('1.0');
   api.use('tracker', 'client');
   api.use('random', 'client');
   api.use('ddp', 'client');

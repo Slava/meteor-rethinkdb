@@ -1,5 +1,10 @@
 #RethinkDB integration for Meteor
 
+A full-stack RethinkDB integration with Meteor. With livequery,
+publish/subscribe, latency compensation and client-side cache.
+
+##Intro
+
 ```
 meteor add simple:rethink
 ```

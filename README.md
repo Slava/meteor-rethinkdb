@@ -1,9 +1,9 @@
-#RethinkDB integration for Meteor
+# RethinkDB integration for Meteor
 
 A full-stack RethinkDB integration with Meteor. With livequery,
 publish/subscribe, latency compensation and client-side cache.
 
-##Intro
+## Intro
 
 ```
 meteor add simple:rethink
@@ -31,9 +31,9 @@ The goals and plans of this package:
 1. [Package development](#package-development)
 1. [Contributions](#contributions)
 
-##Using the package
+## Using the package
 
-###Setup
+### Setup
 
 Adding a package is as simple as running the following command in your Meteor
 app's directory:
@@ -62,7 +62,7 @@ $ rethinkdb
 
 Or [install on another OS](http://rethinkdb.com/docs/install/).
 
-###Tables
+### Tables
 
 When using `new Mongo.Collection('items')`, the collection is automatically
 created in MongoDB if it does not exist. With RethinkDB, you must create the table
@@ -76,7 +76,7 @@ Then declare the table:
 Players = Rethink.Table('players');
 ```
 
-###Queries
+### Queries
 
 Query the data using the
 [Javascript API](http://www.rethinkdb.com/api/javascript/) for [ReQL](http://rethinkdb.com/docs/introduction-to-reql/):
@@ -103,12 +103,12 @@ var r = Rethink.r;
 Players.orderBy(r.desc('score')).limit(3).fetch();
 ```
 
-###Publishing
+### Publishing
 
 Currently, observations (the type of queries you return from publish functions)
 can only be [point queries](http://www.rethinkdb.com/api/javascript/get/) (`.get(primaryKey)`) or orderBy & limit queries (`.orderBy({ index: 'id' }).limit(4)`).
 
-##Package development
+## Package development
 
 Since the package relies on the RethinkDB node driver and Reqlite to build the
 package, make sure `npm` is available and ready for use. Then run the build
@@ -121,7 +121,7 @@ script:
 This script will output a built version of Reqlite and driver for the
 client-side cache.
 
-###Running tests
+### Running tests
 
 Build the package first, then run the tests.
 
@@ -131,6 +131,6 @@ meteor test-packages --driver-package respondly:test-reporter
 ```
 
 
-##Contributions
+## Contributions
 
 Currently this project is welcoming contributions to Reqlite, the mini-implementation of RethinkDB in browser that this package is using on the client-side for DB operations simulations. Also, this project would appreciate more tests testing out different commands.

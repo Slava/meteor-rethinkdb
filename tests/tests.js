@@ -123,6 +123,17 @@ describe('Observing a cursor', function () {
     done();
   });
 
+  it('notices removes', function (done) {
+    finishObserve(function () {
+      coll.filter(r.row('obj').lt(3)).delete().run();
+    });
+    expect(messages).to.have.length(1);
+    var m = messages.shift();
+    expect(m[0]).to.be.equal('r');
+    expect(m[1].obj).to.be.equal(1);
+    done();
+  });
+
 
   it('stops', function (done) {
     h.stop();

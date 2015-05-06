@@ -75,7 +75,7 @@ yourself beforehand. You can do so in the web UI:
 Then declare the table:
 
 ```javascript
-Players = Rethink.Table('players');
+Players = new Rethink.Table('players');
 ```
 
 ### Queries

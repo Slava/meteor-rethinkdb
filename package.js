@@ -1,6 +1,6 @@
 Package.describe({
   name: 'simple:rethink',
-  version: '0.0.1',
+  version: '0.0.2',
   summary: 'RethinkDB support for Meteor.',
   documentation: 'README.md'
 });

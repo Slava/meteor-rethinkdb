@@ -2,7 +2,8 @@ Package.describe({
   name: 'simple:rethink',
   version: '0.0.2',
   summary: 'RethinkDB support for Meteor.',
-  documentation: 'README.md'
+  documentation: 'README.md',
+  git: "https://github.com/Slava/meteor-rethinkdb.git"
 });
 
 Npm.depends({

@@ -55,11 +55,6 @@ describe('Querying data from a table', function () {
 describe('Observing a cursor', function () {
   before(setupCollection);
   after(cleanupCollection);
-  var finishObserve = function (f) {
-    var fence = new DDPServer._WriteFence;
-    DDPServer._CurrentWriteFence.withValue(fence, f);
-    fence.armAndWait();
-  };
 
   var doneObserving;
   var messages;
@@ -142,3 +137,65 @@ describe('Observing a cursor', function () {
   });
 });
 
+describe('Observing a ordered limited cursor', function () {
+  before(setupCollection);
+  after(cleanupCollection);
+
+  var doneObserving;
+  var messages;
+  var h;
+
+  before(function (done) {
+    messages = [];
+
+    coll.insert({id:'b'}).run();
+    coll.insert({id:'c'}).run();
+    coll.insert({id:'d'}).run();
+    h = coll.orderBy({index:'id'}).limit(2).observe({
+      added: function (doc) { messages.push(['a', doc]); },
+      changed: function (newDoc, oldDoc) { messages.push(['c', newDoc, oldDoc]); },
+      removed: function (doc) { messages.push(['r', doc]); }
+    });
+    done();
+  });
+  after(function (done) {
+    h.stop();
+    done();
+  });
+
+  it('gets initial set', function (done) {
+    expect(messages).to.have.length(2);
+    var m;
+    m = messages.shift();
+    expect(m[0]).to.be.equal('a');
+    expect(m[1].id).to.be.equal('b');
+    m = messages.shift();
+    expect(m[0]).to.be.equal('a');
+    expect(m[1].id).to.be.equal('c');
+    done();
+  });
+
+  it('correctly handles push-in/pull-out of a new member of limited set', function (done) {
+    finishObserve(function () {
+      coll.insert({
+        id: 'a'
+      }).run();
+    });
+    expect(messages).to.have.length(2);
+    var m;
+    m = messages.shift();
+    expect(m[0]).to.be.equal('r');
+    expect(m[1].id).to.be.equal('c');
+    m = messages.shift();
+    expect(m[0]).to.be.equal('a');
+    expect(m[1].id).to.be.equal('a');
+    done();
+  });
+});
+
+
+function finishObserve (f) {
+  var fence = new DDPServer._WriteFence;
+  DDPServer._CurrentWriteFence.withValue(fence, f);
+  fence.armAndWait();
+};

@@ -183,7 +183,7 @@ var observe = function (callbacks) {
   var initValuesFuture = new Future;
   var initializing = false;
 
-  var stream = self.changes({ includeStates: true }).run();
+  var stream = self.union().changes({ includeStates: true }).run();
   stream.each(Meteor.bindEnvironment(function (err, notif) {
     if (err) {
       if (initValuesFuture.isResolved())
@@ -237,7 +237,14 @@ var observe = function (callbacks) {
       cbs.removed(notif.old_val);
       return;
     }
-    cbs.changed(notif.new_val, notif.old_val);
+    if (notif.new_val.id === notif.old_val.id) {
+      cbs.changed(notif.new_val, notif.old_val);
+      return;
+    }
+
+    // one val was removed, another was added
+    cbs.removed(notif.old_val);
+    cbs.added(notif.new_val);
   }));
 
   initValuesFuture.wait();

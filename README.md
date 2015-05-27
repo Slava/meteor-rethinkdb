@@ -14,7 +14,7 @@ meteor add simple:rethink
 Demo app: https://github.com/Slava/meteor-rethinkdb-demo
 
 This packages aims to provide a first-class experience working with
-[RethinkDB](https://rethinkdb.com) building full-stack real-time web and mobile
+[RethinkDB](http://rethinkdb.com) building full-stack real-time web and mobile
 apps on the [Meteor](https://meteor.com) framework.
 
 The goals and plans of this package:

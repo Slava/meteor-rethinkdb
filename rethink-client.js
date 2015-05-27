@@ -141,7 +141,7 @@ Rethink.Table.prototype._registerStore = function () {
 };
 
 Rethink.Table.prototype._makeNewID = function () {
-  var src = name ? DDP.randomStream('/collection/' + this.name) : Random;
+  var src = this.name ? DDP.randomStream('/collection/' + this.name) : Random;
   return src.id();
 };
 

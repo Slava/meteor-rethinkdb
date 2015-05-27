@@ -115,8 +115,8 @@ Rethink.Table.prototype._registerStore = function () {
         if (! doc)
           throw new Error("Expected to find a document to change");
         self._localOnly = true;
-        self._localOnly = false;
         self.get(id).update(msg.fields).run();
+        self._localOnly = false;
       } else {
         throw new Error("I don't know how to deal with this message");
       }

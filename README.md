@@ -3,6 +3,8 @@
 A full-stack RethinkDB integration with Meteor. With livequery,
 publish/subscribe, latency compensation and client-side cache.
 
+Work in progress. Not ready for its prime-time.
+
 ![](https://raw.githubusercontent.com/Slava/meteor-rethinkdb/master/img/rethink_cover.png)
 
 ## Intro

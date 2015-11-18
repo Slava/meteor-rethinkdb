@@ -183,7 +183,7 @@ var observe = function (callbacks) {
   var initValuesFuture = new Future;
   var initializing = false;
 
-  var stream = self.union().changes({ includeStates: true }).run();
+  var stream = self.union().changes({ includeStates: true, includeInitial: true }).run();
   stream.each(Meteor.bindEnvironment(function (err, notif) {
     if (err) {
       if (initValuesFuture.isResolved())

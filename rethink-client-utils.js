@@ -16,7 +16,7 @@ PkMap.prototype.forEach = function (cb) {
     }
 };
 
-mkErr = function (ErrClass, repsponse) {
+mkErr = function (ErrClass, response) {
   return new ErrClass(mkAtom(response), response.b);
 }
 
@@ -97,4 +97,3 @@ function convertPseudotype (obj) {
       return obj;
   }
 }
-
